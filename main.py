@@ -1,6 +1,7 @@
 from common.slack_manager import Slack
 from common.config_manager import load_config
 from common.bingx_manager import BingX
+from common.binance_manager import Binance
 
 
 from common.util_manager import Graph
@@ -11,11 +12,12 @@ import pandas as pd
 
 if __name__ == "__main__":
     clsBingX = BingX()
-    df = clsBingX.getOhlcv('BTC-USDT', '4h', '2025-03-01 00:00:00', '2026-01-15 00:00:00')
+    clsBinance = Binance()
+    df = clsBinance.getOhlcv('BTC-USDT', '4h', '2025-03-01 00:00:00', '2026-02-08  00:00:00')
     df = price_action(df)
 
     g = Graph(df, "BTC-USDT")
-    g.candle_price_action(volume = True)
+    # g.candle_price_action(volume = True)
     g.candle_swing(volume = True)
     g.candle_signal(True)
     g.candle_zone(volume=True, zones = zone)
@@ -28,6 +30,7 @@ if __name__ == "__main__":
 
 
     # availableLongVol * safe_ratio
+    
     # availableShortVol * safe_ratio
     clsGraph = Graph(df, 'BTC-USDT')
     clsGraph.candle(True)

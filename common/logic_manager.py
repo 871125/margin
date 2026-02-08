@@ -26,135 +26,134 @@ import numpy as np
 
 def detect_swing_point(df, fail_limit):
     df = df.copy()
-    df = df.sort_index(ascending=False)
+    # Calculate in chronological order
+    df = df.sort_index(ascending=True)
     df["swing_high"] = np.nan
     df["swing_low"]  = np.nan
 
-    n = len(df)
-    start = 0
-    isHigh = True
+    # Window size for local extrema (left + right + center)
+    window = fail_limit * 2 + 1
 
-    while start < n - 1:
-        failCnt = 0
+    # Find local peaks and valleys
+    df['max_rolling'] = df['high'].rolling(window=window, center=True, min_periods=1).max()
+    df['min_rolling'] = df['low'].rolling(window=window, center=True, min_periods=1).min()
 
-        if isHigh:
-            highVal = df.iloc[start].high
-            highIdx = start
+    candidates = []
+    for i in range(len(df)):
+        idx = df.index[i]
+        
+        is_high = df['high'].iloc[i] == df['max_rolling'].iloc[i]
+        is_low  = df['low'].iloc[i] == df['min_rolling'].iloc[i]
 
-            for i in range(start + 1, n):
-                if df.iloc[i].high >= highVal:
-                    highVal = df.iloc[i].high
-                    highIdx = i
-                    failCnt = 0
-                else:
-                    failCnt += 1
-
-                if failCnt >= fail_limit:
-                    df.iat[highIdx, df.columns.get_loc("swing_high")] = highVal
-                    # 🔥 핵심: 무조건 앞으로
-                    start = highIdx + 1
-                    isHigh = False
-                    break
+        if is_high and is_low:
+            # 하나의 캔들에서 High/Low 동시 발생 시 캔들 색상으로 순서 결정
+            if df['close'].iloc[i] > df['open'].iloc[i]:
+                # 양봉: 저점 찍고 고점으로 -> Low, High 순서
+                candidates.append({'idx': idx, 'type': 'Low', 'val': df['low'].iloc[i]})
+                candidates.append({'idx': idx, 'type': 'High', 'val': df['high'].iloc[i]})
             else:
-                break
+                # 음봉: 고점 찍고 저점으로 -> High, Low 순서
+                candidates.append({'idx': idx, 'type': 'High', 'val': df['high'].iloc[i]})
+                candidates.append({'idx': idx, 'type': 'Low', 'val': df['low'].iloc[i]})
+        elif is_high:
+            candidates.append({'idx': idx, 'type': 'High', 'val': df['high'].iloc[i]})
+        elif is_low:
+            candidates.append({'idx': idx, 'type': 'Low', 'val': df['low'].iloc[i]})
 
+    # Filter for alternation
+    if not candidates:
+        return df.sort_index(ascending=False)
+
+    final_swings = []
+    current_swing = candidates[0]
+
+    for i in range(1, len(candidates)):
+        next_cand = candidates[i]
+
+        if next_cand['type'] == current_swing['type']:
+            # If same type, keep the better one
+            if current_swing['type'] == 'High':
+                if next_cand['val'] > current_swing['val']:
+                    current_swing = next_cand
+            else:
+                if next_cand['val'] < current_swing['val']:
+                    current_swing = next_cand
         else:
-            lowVal = df.iloc[start].low
-            lowIdx = start
+            # If different type, confirm current and switch
+            final_swings.append(current_swing)
+            current_swing = next_cand
+    
+    final_swings.append(current_swing)
 
-            for i in range(start + 1, n):
-                if df.iloc[i].low <= lowVal:
-                    lowVal = df.iloc[i].low
-                    lowIdx = i
-                    failCnt = 0
-                else:
-                    failCnt += 1
+    # Assign to DataFrame
+    for s in final_swings:
+        if s['type'] == 'High':
+            df.at[s['idx'], 'swing_high'] = s['val']
+        else:
+            df.at[s['idx'], 'swing_low'] = s['val']
 
-                if failCnt >= fail_limit:
-                    df.iat[lowIdx, df.columns.get_loc("swing_low")] = lowVal
-                    # 🔥 핵심: 무조건 앞으로
-                    start = lowIdx + 1
-                    isHigh = True
-                    break
-            else:
-                break
-    if isHigh:
-        df.at[df.index[-1], 'swing_high'] = df.at[df.index[-1], 'high']
-    else:
-        df.at[df.index[-1], 'swing_low'] = df.at[df.index[-1], 'low']
-    return df
+    df.drop(columns=['max_rolling', 'min_rolling'], inplace=True)
+    
+    # Return in descending order to match original behavior
+    return df.sort_index(ascending=False)
 
 def calc_trend(df):
     df = df.copy()
-    df["status"] = "unknown"
-    first = True
+    # Calculate in chronological order (Past -> Future)
+    df = df.sort_index(ascending=True)
+    df["status"] = "range"
 
-    lstSwingHigh = []   # [(i, value)]
-    lstSwingLow  = []   # [(i, value)]
-
-    last_swing_i = None  # 🔑 직전 swing index
+    recent_highs = []
+    recent_lows = []
+    
+    current_status = "range"
 
     for i in range(len(df)):
         idx = df.index[i]
-        sh = df.at[idx, "swing_high"]
-        sl = df.at[idx, "swing_low"]
+        s_high = df['swing_high'].iloc[i]
+        s_low = df['swing_low'].iloc[i]
+        
+        update_trend = False
 
-        is_swing = False
-
-        # ───────── swing high ─────────
-        if not np.isnan(sh):
-            lstSwingHigh.append((i, sh))
-            if len(lstSwingHigh) > 2:
-                lstSwingHigh = lstSwingHigh[1:]
-            is_swing = True
-
-        # ───────── swing low ─────────
-        if not np.isnan(sl):
-            lstSwingLow.append((i, sl))
-            if len(lstSwingLow) > 2:
-                lstSwingLow = lstSwingLow[1:]
-            is_swing = True
-
-        # swing이 아닌 봉은 스킵
-        if not is_swing:
-            continue
-
-        # 4개 스윙 확보되었을 때만 판단
-        if len(lstSwingHigh) == 2 and len(lstSwingLow) == 2:
-            h1, h2 = lstSwingHigh[0][1], lstSwingHigh[1][1]
-            l1, l2 = lstSwingLow[0][1], lstSwingLow[1][1]
-            indices = [
-                lstSwingHigh[0][0],
-                lstSwingHigh[1][0],
-                lstSwingLow[0][0],
-                lstSwingLow[1][0],
-            ]
-
-
-            if h1 < h2 and l1 < l2:
-                status = "up"
-            elif h1 > h2 and l1 > l2:
-                status = "down"
+        if not pd.isna(s_high):
+            recent_highs.append((idx, s_high))
+            if len(recent_highs) > 2:
+                recent_highs.pop(0)
+            update_trend = True
+            
+        if not pd.isna(s_low):
+            recent_lows.append((idx, s_low))
+            if len(recent_lows) > 2:
+                recent_lows.pop(0)
+            update_trend = True
+            
+        if update_trend and len(recent_highs) == 2 and len(recent_lows) == 2:
+            h1_idx, h1 = recent_highs[0]
+            h2_idx, h2 = recent_highs[1]
+            l1_idx, l1 = recent_lows[0]
+            l2_idx, l2 = recent_lows[1]
+            
+            if h2 > h1 and l2 > l1:
+                new_status = "up"
+            elif h2 < h1 and l2 < l1:
+                new_status = "down"
             else:
-                status = "range"
+                new_status = "range"
 
-            # # 🔑 핵심 변경 부분
-            # start_i = last_swing_i if last_swing_i is not None else i
-            # end_i = i
-
-            if first:
-                df.iloc[min(indices) : max(indices) + 1, df.columns.get_loc("status")] = status
-                first = False
+            if new_status in ["up", "down"]:
+                # 추세가 확정되면, 추세를 형성한 첫 번째 Swing Point부터 현재 시점까지 상태를 소급 적용 (Backfill)
+                start_idx = min(h1_idx, l1_idx)
+                df.loc[start_idx:idx, "status"] = new_status
+                current_status = new_status
             else:
-                df.iloc[sorted(indices)[2] : max(indices) + 1, df.columns.get_loc("status")] = status
+                # 추세가 깨진 경우(Range), 직전 Swing Point부터 구간을 Range로 변경하여 시각적 혼란 방지
+                prev_swing_idx = l2_idx if h2_idx == idx else h2_idx
+                df.loc[prev_swing_idx:idx, "status"] = "range"
+                current_status = "range"
+        
+        df.at[idx, "status"] = current_status
 
-
-            # df.iloc[start_i : end_i, df.columns.get_loc("status")] = status
-
-        # 현재 swing을 마지막 swing으로 저장
-        last_swing_i = i
-
-    return df
+    return df.sort_index(ascending=False)
 
 def detect_reversal_candles(df):
     df = df.copy()
