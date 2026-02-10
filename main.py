@@ -5,7 +5,7 @@ from common.binance_manager import Binance
 
 
 from common.util_manager import Graph
-from common.logic_manager import price_action, detect_swing_point, calculate_moving_average, calc_reversal_signals,detect_zone, find_reversal_candles
+from common.logic_manager import price_action
 import pandas as pd
 
 # from common.logic_manager import detect_supply_demand
@@ -17,7 +17,7 @@ if __name__ == "__main__":
     df = price_action(df)
 
     g = Graph(df, "BTC-USDT")
-    # g.candle_price_action(volume = True)
+    g.candle_price_action(volume = True)
     g.candle_swing(volume = True)
     g.candle_signal(True)
     g.candle_zone(volume=True, zones = zone)

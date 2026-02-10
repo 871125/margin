@@ -47,7 +47,7 @@ class Graph:
                 y2=ymax_arr,
                 where=(self.df["status"] == "up").to_numpy(),
                 color="blue",
-                alpha=0.06
+                alpha=0.5
             ),
             # 하락
             dict(
@@ -55,7 +55,7 @@ class Graph:
                 y2=ymax_arr,
                 where=(self.df["status"] == "down").to_numpy(),
                 color="red",
-                alpha=0.06
+                alpha=0.5
             ),
             # 횡보
             dict(
@@ -63,7 +63,7 @@ class Graph:
                 y2=ymax_arr,
                 where=(self.df["status"] == "range").to_numpy(),
                 color="gold",
-                alpha=0.06
+                alpha=0.5
             ),
         ]
 
