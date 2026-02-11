@@ -67,6 +67,17 @@ class Graph:
             ),
         ]
 
+        if "zone_high" in self.df.columns and "zone_low" in self.df.columns:
+            fill_between.append(
+                dict(
+                    y1=self.df["zone_low"].fillna(0).values,
+                    y2=self.df["zone_high"].fillna(0).values,
+                    where=self.df["zone_id"].notna().values,
+                    color="purple",
+                    alpha=0.3
+                )
+            )
+
         bear_doji_y = np.where(self.df["bearDoji"], self.df["high"] * 1.002, np.nan)
         if np.any(~np.isnan(bear_doji_y)):
             add_plots.append(

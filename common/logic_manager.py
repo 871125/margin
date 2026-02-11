@@ -220,9 +220,73 @@ def detect_reversal_candles(df):
     )
     return df
 
+def find_volume_profile(df, min_candles=30, lookback=50, vol_threshold=0.1, break_threshold=0.015):
+    df = df.copy()
+    # Calculate in chronological order (Past -> Future)
+    df = df.sort_index(ascending=True)
+
+    # 현재 row를 제외한 이전 lookback 기간의 High Max, Low Min
+    # shift(1)을 사용하여 현재 캔들을 제외하고 이전 데이터만 포함
+    df['lookback_max_high'] = df['high'].rolling(window=lookback, min_periods = 1).max().shift(1)
+    df['lookback_min_low']  = df['low'].rolling(window=lookback, min_periods = 1).min().shift(1)
+
+    # 변동폭이 앞의 lookback개 캔들의 변동폭의 break_threshold 이상일 경우 filtering
+    # df['break'] = (df['high']-df['low'])/(df['lookback_max_high']-df['lookback_min_low']) >= break_threshold
+    df['break'] = ((df['high']/df['close'].shift(1)) >= (1+break_threshold)) | ((df['close'].shift(1)/df['low']) >=(1+break_threshold))
+
+    df['zone_id'] = np.nan
+    df['zone_high'] = np.nan
+    df['zone_low'] = np.nan
+
+    current_zone = None
+    zone_id = 0
+
+    for i in range(len(df)):
+        idx = df.index[i]
+        row = df.iloc[i]
+
+        if row['break']:
+            if current_zone:
+                if len(current_zone['indices']) >= min_candles:
+                    zone_id += 1
+                    df.loc[current_zone['indices'], 'zone_id'] = zone_id
+                    df.loc[current_zone['indices'], 'zone_high'] = current_zone['max']
+                    df.loc[current_zone['indices'], 'zone_low'] = current_zone['min']
+                current_zone = None
+            continue
+
+        if current_zone is None:
+            current_zone = {'min': row['low'], 'max': row['high'], 'indices': [idx]}
+        else:
+            new_min = min(current_zone['min'], row['low'])
+            new_max = max(current_zone['max'], row['high'])
+            
+            if (new_max - new_min) / new_min <= vol_threshold:
+                current_zone['min'] = new_min
+                current_zone['max'] = new_max
+                current_zone['indices'].append(idx)
+            else:
+                if len(current_zone['indices']) >= min_candles:
+                    zone_id += 1
+                    df.loc[current_zone['indices'], 'zone_id'] = zone_id
+                    df.loc[current_zone['indices'], 'zone_high'] = current_zone['max']
+                    df.loc[current_zone['indices'], 'zone_low'] = current_zone['min']
+                current_zone = {'min': row['low'], 'max': row['high'], 'indices': [idx]}
+
+    if current_zone and len(current_zone['indices']) >= min_candles:
+        zone_id += 1
+        df.loc[current_zone['indices'], 'zone_id'] = zone_id
+        df.loc[current_zone['indices'], 'zone_high'] = current_zone['max']
+        df.loc[current_zone['indices'], 'zone_low'] = current_zone['min']
+
+    return df.sort_index(ascending=False)
+
+
+
 def price_action(df):
     df = detect_swing_point(df, fail_limit=5)
     df = calc_trend(df)
     df = detect_reversal_candles(df)
+    df = find_volume_profile(df)
 
     return df 
