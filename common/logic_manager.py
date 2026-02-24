@@ -1,40 +1,22 @@
-# swing point
-# moving average
-# candle pattern
 
-
-
-
-# chart에서 매물대 찾기(supply, demand)
-## Supply: 강한 하락 이전 가격대
-## Demand : 강한 상승 이전 가격대
-# candle pattern 만들기
-## 잉걸핑 : https://cafe.naver.com/f-e/cafes/31364126/articles/520?boardtype=L&menuid=2&referrerAllArticles=false&page=2
-## Hammer : https://cafe.naver.com/f-e/cafes/31364126/articles/521?boardtype=L&menuid=2&referrerAllArticles=false&page=2
-## Doji : https://cafe.naver.com/f-e/cafes/31364126/articles/522?boardtype=L&menuid=2&referrerAllArticles=false&page=2
-## Morning Star/ Evenig Star : https://cafe.naver.com/f-e/cafes/31364126/articles/523?boardtype=L&menuid=2&referrerAllArticles=false&page=2
-## 적삼병/흑삼병 : https://cafe.naver.com/f-e/cafes/31364126/articles/524?boardtype=L&menuid=2&referrerAllArticles=false&page=2
-# Moving Avg
-# MACD ? 
-# RSI/ATR
-# 
 import numpy as np
 import pandas as pd
-
-import pandas as pd
-import numpy as np
 
 def detect_swing_point(df, fail_limit):
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🔹 Swing Point Detection
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 1. Rolling Window를 사용하여 국소적 고점(High)과 저점(Low)을 탐색
+    # 2. 한 캔들에서 고점/저점이 동시에 발생할 경우 캔들 색상(양봉/음봉)에 따라 순서 결정
+    # 3. High -> Low -> High 순서가 유지되도록 필터링 (Alternation)
+
     df = df.copy()
-    # Calculate in chronological order
     df = df.sort_index(ascending=True)
     df["swing_high"] = np.nan
     df["swing_low"]  = np.nan
 
-    # Window size for local extrema (left + right + center)
     window = fail_limit * 2 + 1
 
-    # Find local peaks and valleys
     df['max_rolling'] = df['high'].rolling(window=window, center=True, min_periods=1).max()
     df['min_rolling'] = df['low'].rolling(window=window, center=True, min_periods=1).min()
 
@@ -60,7 +42,6 @@ def detect_swing_point(df, fail_limit):
         elif is_low:
             candidates.append({'idx': idx, 'type': 'Low', 'val': df['low'].iloc[i]})
 
-    # Filter for alternation
     if not candidates:
         return df.sort_index(ascending=False)
 
@@ -98,8 +79,15 @@ def detect_swing_point(df, fail_limit):
     return df.sort_index(ascending=False)
 
 def calc_trend(df):
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🔹 Trend Calculation
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 1. 최근 2개의 Swing High/Low를 비교하여 추세 결정
+    #    - 고점 상승 & 저점 상승 => Up Trend
+    #    - 고점 하락 & 저점 하락 => Down Trend
+    # 2. 추세가 명확하지 않으면 Range(횡보)로 설정
+
     df = df.copy()
-    # Calculate in chronological order (Past -> Future)
     df = df.sort_index(ascending=True)
     df["status"] = None
 
@@ -145,12 +133,16 @@ def calc_trend(df):
     return df.sort_index(ascending=False)
 
 def detect_reversal_candles(df):
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🔹 Candlestick Pattern Recognition
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 1. 캔들의 Body, Wick, Range 등 기본 속성 계산
+    # 2. 주요 반전 패턴 탐지: Doji, Hammer/Shooting Star, Engulfing
+    # 3. 거래량(Volume) 조건을 추가하여 신뢰도 향상
+
     df = df.copy()
     df = df.sort_index(ascending=False)
 
-    #━━━━━━━━━━━━━━━━━━━
-    # 캔들 기본 계산
-    #━━━━━━━━━━━━━━━━━━━
     df["body"] = (df["close"] - df["open"]).abs()
     df["upperWick"] = df["high"] - df[["open", "close"]].max(axis=1)
     df["lowerWick"] = df[["open", "close"]].min(axis=1) - df["low"]
@@ -159,15 +151,9 @@ def detect_reversal_candles(df):
     df["highest_6"] = df["high"].rolling(6).max().shift(1)
     df["lowest_6"] = df["low"].rolling(6).min().shift(1)
 
-    #━━━━━━━━━━━━━━━━━━━
-    # Volume Moving Average
-    #━━━━━━━━━━━━━━━━━━━
     df['volMa20'] = df["volume"].rolling(20).mean()
     movingAvgPct = 1.2
 
-    #━━━━━━━━━━━━━━━━━━━
-    # Doji
-    #━━━━━━━━━━━━━━━━━━━
     df["bearDoji"] = ((df["body"] <= df["range"] * 0.10) & 
                       (df["upperWick"] > df["lowerWick"]) & 
                       (df["high"] >= df["highest_6"]) &
@@ -177,9 +163,6 @@ def detect_reversal_candles(df):
                       (df["low"] <= df["lowest_6"])&
                       (df['volume'] >= df['volMa20'] * movingAvgPct))
 
-    #━━━━━━━━━━━━━━━━━━━
-    # Hammer / Shooting star     
-    #━━━━━━━━━━━━━━━━━━━
     df['bullHS'] = ((df[['high', 'low']].mean(axis =1) <= df[['close', 'open']].min(axis=1))& 
                     (df['lowerWick'] >= df['body'] *2) & (df['upperWick'] <= df['body'] * 0.25) & 
                     (df["low"] <= df["lowest_6"])&
@@ -189,9 +172,6 @@ def detect_reversal_candles(df):
                     (df["high"] >= df["highest_6"]) &
                     (df['volume'] >= df['volMa20'] * movingAvgPct))
 
-    #━━━━━━━━━━━━━━━━━━━
-    # Engulfing
-    #━━━━━━━━━━━━━━━━━━━
     lowest_5_shift2  = df["low"].rolling(5).min().shift(2)
     highest_5_shift2 = df["high"].rolling(5).max().shift(2)
 
@@ -221,17 +201,19 @@ def detect_reversal_candles(df):
     return df
 
 def find_volume_profile(df, min_candles=30, lookback=50, vol_threshold=0.1, break_threshold=0.015):
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🔹 Volume Profile / Consolidation Zones
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 1. 가격 변동폭(Break)을 감지하여 횡보 구간 식별
+    # 2. 일정 기간(min_candles) 이상 유지된 구간을 Zone으로 설정
+    # 3. Zone 내부의 고점/저점을 기록
+
     df = df.copy()
-    # Calculate in chronological order (Past -> Future)
     df = df.sort_index(ascending=True)
 
-    # 현재 row를 제외한 이전 lookback 기간의 High Max, Low Min
-    # shift(1)을 사용하여 현재 캔들을 제외하고 이전 데이터만 포함
     df['lookback_max_high'] = df['high'].rolling(window=lookback, min_periods = 1).max().shift(1)
     df['lookback_min_low']  = df['low'].rolling(window=lookback, min_periods = 1).min().shift(1)
 
-    # 변동폭이 앞의 lookback개 캔들의 변동폭의 break_threshold 이상일 경우 filtering
-    # df['break'] = (df['high']-df['low'])/(df['lookback_max_high']-df['lookback_min_low']) >= break_threshold
     df['break'] = ((df['high']/df['close'].shift(1)) >= (1+break_threshold)) | ((df['close'].shift(1)/df['low']) >=(1+break_threshold))
 
     df['zone_id'] = np.nan
@@ -281,12 +263,102 @@ def find_volume_profile(df, min_candles=30, lookback=50, vol_threshold=0.1, brea
 
     return df.sort_index(ascending=False)
 
+def find_zone(df):
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🔹 Trend Zones & Fibonacci Retracement
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 1. 연속된 추세(Up/Down) 구간을 블록으로 그룹화
+    # 2. 각 추세 구간 내의 Swing Point를 식별하여 Zone 설정
+    # 3. 확정된 구간에 대해 피보나치 되돌림(38.2%, 50%, 61.8%) 계산
+
+    df = df.copy()
+    df = df.sort_index(ascending=True)
+
+    temp_status = df['status'].ffill()
+    
+    groups = temp_status.ne(temp_status.shift()).cumsum()
+    
+    for _, group in df.groupby(groups):
+        if group.empty: continue
+        
+        first_idx = group.index[0]
+        last_idx = group.index[-1]
+        status = temp_status.loc[first_idx]
+        
+        if status in ['up', 'down']:
+            points = []
+            prefix = ""
+            
+            if status == 'up':
+                mask = (df['swing_low'].notna()) & (df.index <= last_idx)
+                all_lows = df.index[mask]
+                
+                points_before_or_at = all_lows[all_lows <= first_idx]
+                points_after = all_lows[all_lows > first_idx]
+                
+                points = sorted(points_before_or_at[-2:].tolist() + points_after.tolist())
+                prefix = "trend_up_zone_"
+                
+            elif status == 'down':
+                mask = (df['swing_high'].notna()) & (df.index <= last_idx)
+                all_highs = df.index[mask]
+                
+                points_before_or_at = all_highs[all_highs <= first_idx]
+                points_after = all_highs[all_highs > first_idx]
+                
+                points = sorted(points_before_or_at[-2:].tolist() + points_after.tolist())
+                prefix = "trend_down_zone_"
+            
+            for i, pt_idx in enumerate(points):
+                col_high = f'{prefix}{i}_high'
+                col_low = f'{prefix}{i}_low'
+                
+                ref_high = df.loc[pt_idx, 'high']
+                ref_low = df.loc[pt_idx, 'low']
+                
+                fill_idx = df.loc[pt_idx:last_idx].index
+
+                df.loc[fill_idx, col_high] = ref_high
+                df.loc[fill_idx, col_low] = ref_low
+
+                if status == 'up':
+                    mask_next = (df.index > pt_idx) & (df['swing_high'].notna())
+                    next_highs = df.index[mask_next]
+                    
+                    if not next_highs.empty:
+                        calc_high = df.loc[next_highs[0], 'swing_high']
+                        height = calc_high - ref_low
+
+                        df.loc[fill_idx, f'{prefix}{i}_fib_382'] = ref_low + height * 0.382
+                        df.loc[fill_idx, f'{prefix}{i}_fib_500'] = ref_low + height * 0.5
+                        df.loc[fill_idx, f'{prefix}{i}_fib_618'] = ref_low + height * 0.618
+                elif status == 'down':
+                    mask_next = (df.index > pt_idx) & (df['swing_low'].notna())
+                    next_lows = df.index[mask_next]
+                    
+                    if not next_lows.empty:
+                        calc_low = df.loc[next_lows[0], 'swing_low']
+                        height = ref_high - calc_low
+
+                        df.loc[fill_idx, f'{prefix}{i}_fib_382'] = ref_high - height * 0.382
+                        df.loc[fill_idx, f'{prefix}{i}_fib_500'] = ref_high - height * 0.5
+                        df.loc[fill_idx, f'{prefix}{i}_fib_618'] = ref_high - height * 0.618
+
+    return df.sort_index(ascending=False)
+
+        
+
 
 
 def price_action(df):
-    df = detect_swing_point(df, fail_limit=5)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🔹 Price Action Analysis Pipeline
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 전체 분석 로직을 순차적으로 실행
+    df = detect_swing_point(df, fail_limit=14)
     df = calc_trend(df)
     df = detect_reversal_candles(df)
     df = find_volume_profile(df)
+    df = find_zone(df)
 
     return df 

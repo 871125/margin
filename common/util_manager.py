@@ -15,14 +15,20 @@ class Graph:
         self.df = df.sort_index()
 
     def candle_price_action(self, volume=True):
-        # self.df = self.df[["open", "high", "low", "close", "volume", "swing_high", "swing_low", "status"]]
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 🔹 Price Action Comprehensive Chart
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 1. Swing Line & Trend Background (Up/Down/Range)
+        # 2. Dynamic Trend Zones (Support/Resistance)
+        # 3. Latest Fibonacci Retracement Levels (38.2%, 50%, 61.8%)
+        # 4. Candlestick Patterns (Doji, Hammer, Engulfing)
         add_plots = []
 
         # ─────────────────────────────
         # 🔹 swing 라인
         # ─────────────────────────────
         self.df["swing"] = self.df["swing_high"].combine_first(self.df["swing_low"])
-        self.df["swing_line"] = self.df["swing"].interpolate(method="time")
+        self.df["swing_line"] = self.df["swing"].interpolate(method="time", limit_area='inside')
 
         add_plots.append(
             mpf.make_addplot(
@@ -74,7 +80,82 @@ class Graph:
                     y2=self.df["zone_high"].fillna(0).values,
                     where=self.df["zone_id"].notna().values,
                     color="purple",
-                    alpha=0.3
+                    alpha=0
+                )
+            )
+
+        # Dynamic zone plotting
+        up_zone_cols = [c for c in self.df.columns if c.startswith("trend_up_zone_") and c.endswith("_high")]
+        down_zone_cols = [c for c in self.df.columns if c.startswith("trend_down_zone_") and c.endswith("_high")]
+
+        for col in up_zone_cols:
+            low_col = col.replace("_high", "_low")
+            if low_col in self.df.columns:
+                fill_between.append(
+                    dict(
+                        y1=self.df[low_col].values,
+                        y2=self.df[col].values,
+                        where=self.df[low_col].notna().values,
+                        color="green",
+                        alpha=0.1
+                    )
+                )
+
+        for col in down_zone_cols:
+            low_col = col.replace("_high", "_low")
+            if low_col in self.df.columns:
+                fill_between.append(
+                    dict(
+                        y1=self.df[low_col].values,
+                        y2=self.df[col].values,
+                        where=self.df[low_col].notna().values,
+                        color="red",
+                        alpha=0.1
+                    )
+                )
+
+        fib_cols = [c for c in self.df.columns if "_fib_" in c]
+        
+        # ─────────────────────────────────────────────────────────────
+        # 🔹 마지막 피보나치만 남기기
+        # ─────────────────────────────────────────────────────────────
+        global_last_idx = None
+        for col in fib_cols:
+            lvi = self.df[col].last_valid_index()
+            if lvi is not None:
+                if global_last_idx is None or lvi > global_last_idx:
+                    global_last_idx = lvi
+
+        final_fib_series = {}
+        if global_last_idx is not None:
+            for col in fib_cols:
+                if pd.notna(self.df.loc[global_last_idx, col]):
+                    series = self.df[col].copy()
+                    subset = series.loc[:global_last_idx]
+                    last_nan = subset.isna().iloc[::-1].idxmax() if subset.isna().any() else None
+                    if last_nan is not None:
+                        series.loc[:last_nan] = np.nan
+                    series.loc[series.index > global_last_idx] = np.nan
+                    final_fib_series[col] = series
+
+        for col, series in final_fib_series.items():
+            is_50 = "_500" in col
+            is_up = "trend_up" in col
+            
+            if is_up:
+                color = "blue" if is_50 else "skyblue"
+            else:
+                color = "red" if is_50 else "lightcoral"
+
+            width = 1.2 if is_50 else 0.8
+
+            add_plots.append(
+                mpf.make_addplot(
+                    series,
+                    type='line',
+                    linestyle='dotted',
+                    width=width,
+                    color=color
                 )
             )
 
@@ -151,7 +232,7 @@ class Graph:
                 )
             )
 
-        return mpf.plot(
+        fig, axes = mpf.plot(
             self.df,
             type="candle",
             volume=volume,
@@ -161,10 +242,41 @@ class Graph:
             title=self.title,
             ylabel="Price",
             ylabel_lower="Volume",
-            figsize=(14, 8)
+            figsize=(14, 8),
+            returnfig=True
         )
 
+        # 텍스트 라벨 추가 (피보나치 % 표시)
+        ax = axes[0]
+        for col in final_fib_series.keys():
+            last_idx = final_fib_series[col].last_valid_index()
+            if last_idx:
+                val = final_fib_series[col].loc[last_idx]
+                x_pos = self.df.index.get_loc(last_idx)
+                
+                label = ""
+                if "_382" in col: label = ""
+                elif "_500" in col: label = ""
+                elif "_618" in col: label = ""
+                
+                is_50 = "_500" in col
+                is_up = "trend_up" in col
+                
+                if is_up:
+                    text_color = "blue" if is_50 else "skyblue"
+                else:
+                    text_color = "red" if is_50 else "lightcoral"
+
+                ax.text(x_pos, val, f" {label}", color=text_color, fontsize=9, verticalalignment="center", fontweight='bold' if is_50 else 'normal')
+
+        plt.show()
+        return fig, axes
+
     def candle_signal(self, volume=True):
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 🔹 Candle Pattern Signal Chart
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 1. 주요 캔들 패턴(Doji, Hammer, Engulfing) 발생 지점에 마커 표시
         df = self.df[["open", "high", "low", "close", "volume"]].copy()
 
         apds = []
@@ -257,6 +369,10 @@ class Graph:
 
 
     def candle(self, volume):
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 🔹 Basic Candle Chart
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 1. 기본 캔들 차트 및 거래량 표시
         self.df = self.df[["open", "high", "low", "close", "volume"]]
         return mpf.plot(
             self.df,
@@ -270,6 +386,10 @@ class Graph:
         )
     
     def candle_ma(self, lstMa, volume):
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 🔹 Moving Average Chart
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 1. 다중 이동평균선(MA) 표시
         add_plots =[]
         for ma in lstMa:
             period = ma["period"]
@@ -298,6 +418,11 @@ class Graph:
         )
 
     def candle_swing(self, volume):
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 🔹 Swing & Trend Chart
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 1. Swing Point 연결선 표시
+        # 2. 추세 상태(Up/Down/Range)에 따른 배경색 채우기
         self.df = self.df[["open", "high", "low", "close", "volume", "swing_high", "swing_low", "status"]]
         add_plots = []
 
@@ -366,6 +491,11 @@ class Graph:
 
         
     def candle_swing_reversal(self, volume):
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 🔹 Swing Reversal Signal Chart
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 1. 매매 신호(BUY/SELL) 발생 지점 마커 표시
+        # 2. Swing Line 함께 표시
         df = self.df.copy()   # 🔥 self.df 건드리지 마라
 
         add_plots = []
@@ -425,6 +555,10 @@ class Graph:
         )
         
     def candle_zone(self, volume=True, zones=None):
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 🔹 Supply & Demand Zone Chart
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 1. 특정 매물대(Zone)를 박스 형태로 시각화
         self.df = self.df[["open", "high", "low", "close", "volume"]]
 
         fig, axes = mpf.plot(

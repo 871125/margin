@@ -13,16 +13,11 @@ import pandas as pd
 if __name__ == "__main__":
     clsBingX = BingX()
     clsBinance = Binance()
-    df = clsBinance.getOhlcv('BTC-USDT', '4h', '2025-03-01 00:00:00', '2026-02-08  00:00:00')
+    df = clsBinance.getOhlcv('BTC-USDT', '4h', '2025-01-01 00:00:00', '2026-02-24  00:00:00')
     df = price_action(df)
 
     g = Graph(df, "BTC-USDT")
     g.candle_price_action(volume = True)
-    g.candle_swing(volume = True)
-    g.candle_signal(True)
-    g.candle_zone(volume=True, zones = zone)
-    # g.candle_swing_reversal(volume =True)
-    g.candle_swing(volume=True)
 
 
     t = clsBingX.getAccount()
