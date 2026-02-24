@@ -11,12 +11,18 @@ import pandas as pd
 # from common.logic_manager import detect_supply_demand
 
 if __name__ == "__main__":
+    
+    startTime = '2025-01-01 00:00:00'
+    endTime = '2026-02-24  00:00:00'
+    symbol = 'BTC-USDT'
+    interval = '4h'
+
     clsBingX = BingX()
     clsBinance = Binance()
-    df = clsBinance.getOhlcv('BTC-USDT', '4h', '2025-01-01 00:00:00', '2026-02-24  00:00:00')
+    df = clsBinance.getOhlcv(symbol, interval, startTime, endTime)
     df = price_action(df)
 
-    g = Graph(df, "BTC-USDT")
+    g = Graph(df, f"{symbol} ({interval}) : {startTime}~{endTime}" )
     g.candle_price_action(volume = True)
 
 

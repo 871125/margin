@@ -117,26 +117,20 @@ class Graph:
         fib_cols = [c for c in self.df.columns if "_fib_" in c]
         
         # ─────────────────────────────────────────────────────────────
-        # 🔹 마지막 피보나치만 남기기
+        # 🔹 마지막 시점(Current)의 피보나치만 남기기
         # ─────────────────────────────────────────────────────────────
-        global_last_idx = None
-        for col in fib_cols:
-            lvi = self.df[col].last_valid_index()
-            if lvi is not None:
-                if global_last_idx is None or lvi > global_last_idx:
-                    global_last_idx = lvi
-
+        current_idx = self.df.index[-1]
         final_fib_series = {}
-        if global_last_idx is not None:
-            for col in fib_cols:
-                if pd.notna(self.df.loc[global_last_idx, col]):
-                    series = self.df[col].copy()
-                    subset = series.loc[:global_last_idx]
-                    last_nan = subset.isna().iloc[::-1].idxmax() if subset.isna().any() else None
-                    if last_nan is not None:
-                        series.loc[:last_nan] = np.nan
-                    series.loc[series.index > global_last_idx] = np.nan
-                    final_fib_series[col] = series
+        
+        for col in fib_cols:
+            # 현재 시점에 값이 있는 경우에만 포함
+            if pd.notna(self.df.loc[current_idx, col]):
+                series = self.df[col].copy()
+                # 현재 블록만 남기고 이전 데이터(과거 Zone) 제거
+                if series.isna().any():
+                    last_nan_idx = series.isna()[::-1].idxmax()
+                    series.loc[:last_nan_idx] = np.nan
+                final_fib_series[col] = series
 
         for col, series in final_fib_series.items():
             is_50 = "_500" in col
@@ -248,16 +242,16 @@ class Graph:
 
         # 텍스트 라벨 추가 (피보나치 % 표시)
         ax = axes[0]
-        for col in final_fib_series.keys():
-            last_idx = final_fib_series[col].last_valid_index()
+        for col, series in final_fib_series.items():
+            last_idx = series.last_valid_index()
             if last_idx:
-                val = final_fib_series[col].loc[last_idx]
+                val = series.loc[last_idx]
                 x_pos = self.df.index.get_loc(last_idx)
                 
                 label = ""
-                if "_382" in col: label = ""
-                elif "_500" in col: label = ""
-                elif "_618" in col: label = ""
+                if "_382" in col: label = "38.2%"
+                elif "_500" in col: label = "50%"
+                elif "_618" in col: label = "61.8%"
                 
                 is_50 = "_500" in col
                 is_up = "trend_up" in col

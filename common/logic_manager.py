@@ -269,7 +269,7 @@ def find_zone(df):
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 1. 연속된 추세(Up/Down) 구간을 블록으로 그룹화
     # 2. 각 추세 구간 내의 Swing Point를 식별하여 Zone 설정
-    # 3. 확정된 구간에 대해 피보나치 되돌림(38.2%, 50%, 61.8%) 계산
+    # 3. 마지막 유효 추세 구간에 대해 피보나치 되돌림(38.2%, 50%, 61.8%) 계산
 
     df = df.copy()
     df = df.sort_index(ascending=True)
@@ -277,8 +277,13 @@ def find_zone(df):
     temp_status = df['status'].ffill()
     
     groups = temp_status.ne(temp_status.shift()).cumsum()
+
+    # Find the last group that is 'up' or 'down'
+    group_status = temp_status.groupby(groups).first()
+    valid_keys = group_status[group_status.isin(['up', 'down'])].index
+    last_valid_key = valid_keys[-1] if not valid_keys.empty else None
     
-    for _, group in df.groupby(groups):
+    for name, group in df.groupby(groups):
         if group.empty: continue
         
         first_idx = group.index[0]
@@ -321,28 +326,29 @@ def find_zone(df):
                 df.loc[fill_idx, col_high] = ref_high
                 df.loc[fill_idx, col_low] = ref_low
 
-                if status == 'up':
-                    mask_next = (df.index > pt_idx) & (df['swing_high'].notna())
-                    next_highs = df.index[mask_next]
-                    
-                    if not next_highs.empty:
-                        calc_high = df.loc[next_highs[0], 'swing_high']
-                        height = calc_high - ref_low
+                if name == last_valid_key:
+                    if status == 'up':
+                        mask_next = (df.index > pt_idx) & (df['swing_high'].notna())
+                        next_highs = df.index[mask_next]
+                        
+                        if not next_highs.empty:
+                            calc_high = df.loc[next_highs[0], 'swing_high']
+                            height = calc_high - ref_low
 
-                        df.loc[fill_idx, f'{prefix}{i}_fib_382'] = ref_low + height * 0.382
-                        df.loc[fill_idx, f'{prefix}{i}_fib_500'] = ref_low + height * 0.5
-                        df.loc[fill_idx, f'{prefix}{i}_fib_618'] = ref_low + height * 0.618
-                elif status == 'down':
-                    mask_next = (df.index > pt_idx) & (df['swing_low'].notna())
-                    next_lows = df.index[mask_next]
-                    
-                    if not next_lows.empty:
-                        calc_low = df.loc[next_lows[0], 'swing_low']
-                        height = ref_high - calc_low
+                            df.loc[fill_idx, f'{prefix}{i}_fib_382'] = ref_low + height * 0.382
+                            df.loc[fill_idx, f'{prefix}{i}_fib_500'] = ref_low + height * 0.5
+                            df.loc[fill_idx, f'{prefix}{i}_fib_618'] = ref_low + height * 0.618
+                    elif status == 'down':
+                        mask_next = (df.index > pt_idx) & (df['swing_low'].notna())
+                        next_lows = df.index[mask_next]
+                        
+                        if not next_lows.empty:
+                            calc_low = df.loc[next_lows[0], 'swing_low']
+                            height = ref_high - calc_low
 
-                        df.loc[fill_idx, f'{prefix}{i}_fib_382'] = ref_high - height * 0.382
-                        df.loc[fill_idx, f'{prefix}{i}_fib_500'] = ref_high - height * 0.5
-                        df.loc[fill_idx, f'{prefix}{i}_fib_618'] = ref_high - height * 0.618
+                            df.loc[fill_idx, f'{prefix}{i}_fib_382'] = ref_high - height * 0.382
+                            df.loc[fill_idx, f'{prefix}{i}_fib_500'] = ref_high - height * 0.5
+                            df.loc[fill_idx, f'{prefix}{i}_fib_618'] = ref_high - height * 0.618
 
     return df.sort_index(ascending=False)
 
