@@ -17,7 +17,7 @@ if __name__ == "__main__":
     symbol = 'BTC-USDT'
     interval = '4h'
 
-    clsBingX = BingX()
+    clsBingX = BingX() 
     clsBinance = Binance()
     df = clsBinance.getOhlcv(symbol, interval, startTime, endTime)
     df = price_action(df)

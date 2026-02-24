@@ -80,7 +80,7 @@ class Graph:
                     y2=self.df["zone_high"].fillna(0).values,
                     where=self.df["zone_id"].notna().values,
                     color="purple",
-                    alpha=0
+                    alpha=0.5
                 )
             )
 
